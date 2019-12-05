@@ -287,50 +287,56 @@ def ehost2tsv(pin, pout_d, annotation_types, verbose=False):
     flagged = []
     i = 0
     
-    with open(pout, 'w') as fout:
-        while i < len(doc):
-            token = doc[i]
-            token_start = token.idx
-            token_end = token.idx + len(token) - 1
-        
-            if token_start in annotations:
-                ann = annotations[token_start]
-                ann_text = ann.get('text')
-                ann_doc = nlp(ann_text)
-                for ann_tok in ann_doc:
-                    ann_tok_start = token_start + ann_tok.idx
-                    ann_tok_end = ann_tok_start + len(ann_tok) - 1
-                    output_str = str(token._.sentnum) + '\t' + str(ann_tok_start) + '\t' + str(ann_tok_end) + '\t' + ann_tok.text + '\t' + ann_tok.lemma_ + '\t' + token.tag_ +  '\t' + ann_tok.dep_ + '\t' + str(ann_tok.head)
-                    if verbose:
-                        print(output_str, end='\t', file=sys.stdout)
-                    print(output_str, end='\t', file=fout)
-                    for ann_type in annotation_types:
-                        if verbose:
-                            print(ann.get(ann_type, '-') + '\t', end='\t', file=sys.stdout)
-                        print(ann.get(ann_type, '-') + '\t', end='\t', file=fout)
-                    if verbose:
-                        print('\n', end='', file=sys.stdout)
-                    print('\n', end='', file=fout)
-                flagged.append(token_start)
-                i += len(ann_doc) - 1
-            else:
-                output_str = str(token._.sentnum) + '\t' + str(token_start) + '\t' + str(token_end) + '\t' + token.text + '\t' + token.lemma_ + '\t' + token.tag_ + '\t' + token.dep_ + '\t' + str(token.head)
-                output_str += '\t-' * len(annotation_types)
+    df = pd.DataFrame(columns=['sentnum', 'start', 'end', 'word', 'lemma', 'pos', 'dep', 'head'] + annotation_types)
+    while i < len(doc):
+        token = doc[i]
+        token_start = token.idx
+        token_end = token.idx + len(token) - 1
+            
+        output = []
+        if token_start in annotations:
+            ann = annotations[token_start]
+            ann_text = ann.get('text')
+            ann_doc = nlp(ann_text)
+            for ann_tok in ann_doc:
+                ann_output = []
+                ann_tok_start = token_start + ann_tok.idx
+                ann_tok_end = ann_tok_start + len(ann_tok) - 1
+                output_str = str(token._.sentnum) + '\t' + str(ann_tok_start) + '\t' + str(ann_tok_end) + '\t' + ann_tok.text + '\t' + ann_tok.lemma_ + '\t' + token.tag_ +  '\t' + ann_tok.dep_ + '\t' + str(ann_tok.head)
+                ann_output += [token._.sentnum, ann_tok_start, ann_tok_end, ann_tok.text, ann_tok.lemma_, token.tag_ , ann_tok.dep_, ann_tok.head]
                 if verbose:
-                    print(output_str, end='', file=sys.stdout)
-                print(output_str, end='', file=fout)
+                    print(output_str, end='\t', file=sys.stdout)
+                for ann_type in annotation_types:
+                    if verbose:
+                        print(ann.get(ann_type, '-') + '\t', end='\t', file=sys.stdout)
+                    ann_output.append(ann.get(ann_type, '-'))
+                df.loc[i] = ann_output
+                if verbose:
+                    print('\n', end='', file=sys.stdout)
+            flagged.append(token_start)
+            i += len(ann_doc) - 1
+        else:
+            output_str = str(token._.sentnum) + '\t' + str(token_start) + '\t' + str(token_end) + '\t' + token.text + '\t' + token.lemma_ + '\t' + token.tag_ + '\t' + token.dep_ + '\t' + str(token.head)
+            output_str += '\t-' * len(annotation_types)
+            output += [token._.sentnum, token_start, token_end, token.text, token.lemma_, token.tag_, token.dep_, token.head]
+            output += ['-'] * len(annotation_types)
             if verbose:
-                print('', file=sys.stdout)
-            print('', file=fout)
-            i += 1
+                print(output_str, end='', file=sys.stdout)
+            # Store the line in the DataFrame
+            df.loc[i] = output
+        if verbose:
+            print('', file=sys.stdout)
+        i += 1
     
-        # check the annotation offsets are equivalent
-        gold = sorted(annotations.keys())
-        flagged = sorted(flagged)
-        #print(gold, len(gold))
-        #print(flagged, len(flagged))
-        if flagged != gold:
-            print('-- Unequal number of annotations for', pin)
+    # Check the annotation offsets are equivalent
+    gold = sorted(annotations.keys())
+    flagged = sorted(flagged)
+    #print(gold, len(gold))
+    #print(flagged, len(flagged))
+    if flagged != gold:
+        print('-- Unequal number of annotations for', pin)
 
-    fout.close()
+    df.to_csv(pout)
     print('-- Wrote file:', pout)
+    
+    return df
